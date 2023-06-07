@@ -1,0 +1,286 @@
+/* Sudoku Solver with Genetic Algorithm
+   Aimilios Psathas
+*/
+//Libraries
+#include <stdio.h>
+#include <math.h>
+#include <time.h>
+#include <cstdlib>
+#include <string.h>
+#include <stdlib.h>
+
+// Functions
+void print_matrix(int x[9][9]){
+	for(int i = 0; i < 9; i++){
+		for(int j = 0; j < 9; j++){
+			printf("%d ",x[i][j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+}
+
+int row_check(int x[9][9], int row, int col){
+	int error = 0; int count = 0;
+	for(int j = 0; j < 9; j++){
+		if(x[row][j] == x[row][col]) count++;
+	}
+	if(count != 1) error = error + fabs(count - 1);
+	return error  ;
+}
+
+int column_check(int x[9][9], int row, int col){
+	int error = 0; int count = 0;
+	for(int i = 0; i < 9; i++){
+		if(x[i][col] == x[row][col]) count++;
+	}
+	if(count != 1) error = error + fabs(count - 1);
+	return error;
+}
+
+int region_check(int x[9][9], int row, int col){
+	int i_start = (row / 3) * 3 ;
+	int j_start = (col / 3) * 3;
+	int error = 0; int count = 0;
+	for(int i = i_start; i < i_start + 3; i++){
+		for(int j = j_start; j < j_start + 3; j++){
+			if(x[i][j] == x[row][col]) count++;
+		}
+	}
+	if(count != 1) error = error + fabs(count - 1);
+	return error;
+}
+
+void make_steady(int x[9][9], int steady[9][9]){
+	for(int i=0; i<9; i++){
+   		for(int j=0; j<9; j++){
+        	if(x[i][j] == 0) steady[i][j] = 0;
+        	else steady[i][j] = 1 ;
+		}
+	}	
+}
+
+int fitness(int solution[9][9], int steady[9][9], int fitness_matrix[9][9]){
+	int total_error = 0;
+	for(int i = 0; i < 9; i++){
+		for(int j = 0 ; j < 9; j++){
+			if(steady[i][j] == 0){
+				fitness_matrix[i][j] = row_check(solution,i,j) + column_check(solution,i,j) + region_check(solution,i,j);
+				total_error = total_error + fitness_matrix[i][j];
+			}
+			else fitness_matrix[i][j] = 0;
+		}
+	}
+	return total_error;
+}
+
+void initialize_population(int population[][9][9], int num_solutions, int steady[9][9]){
+    srand(time(NULL));
+    for (int k = 0; k < num_solutions; k++){
+        for (int i = 0; i < 9; i++) {
+            for (int j = 0; j < 9; j++) {
+                if (steady[i][j] == 0) {
+                    int block_row = i / 3;
+                    int block_col = j / 3;
+                    int region_start_row = block_row * 3;
+                    int region_start_col = block_col * 3;
+                    bool unique = false;
+                    int num;
+                    while (!unique) {
+                        num = rand() % 9 + 1;
+                        unique = true;
+                        for (int row = region_start_row; row < region_start_row + 3; row++){
+                            for (int col = region_start_col; col < region_start_col + 3; col++){
+                                if (population[k][row][col] == num) {
+                                    unique = false;
+                                    break;
+                                }
+                            }
+                            if (!unique)
+                                break;
+                        }
+                    }
+
+                    population[k][i][j] = num;
+                } 
+				else{
+                    population[k][i][j] = population[0][i][j];
+                }
+            }
+        }
+    }
+}
+
+int tournament_selection(int fitness_values[][9][9], int tournament_size, int population_size){
+	int index[tournament_size];
+	int best_fit;
+	int best_index = 0;
+	best_fit = fitness_values[0][9][9];
+	for(int k = 0; k < tournament_size; k++){
+		index[k] = rand() % population_size +1 ; 
+	}
+    for (int i = 0; i < tournament_size; i++){
+    	if(fitness_values[index[i]][9][9] <= best_fit){
+    		best_fit = fitness_values[index[i]][9][9];
+    		best_index = index[i];
+		}
+    }
+    return best_index;
+}
+
+void crossover(int parent1[9][9], int parent2[9][9], int child[9][9], int steady[9][9]){
+    for (int i = 0; i < 9; i++){
+        for (int j = 0; j < 9; j++){
+            if (i < 3) {
+                child[i][j] = parent1[i][j];
+            } else {
+                child[i][j] = parent2[i][j];
+            }
+        }
+    }
+}
+
+void mutate(int child[9][9], int index, int steady[9][9], int x[][9][9]){
+    int start_row = rand() % 3 * 3;
+    int start_col = rand() % 3 * 3;
+    int count = 0;
+    for (int i = start_row; i < start_row + 3; i++){
+        for (int j = start_col; j < start_col + 3; j++){
+            if (steady[i][j] == 0)
+                count++;
+        }
+    }
+    if (count < 2){
+        return;
+    }
+    int num1, num2;
+    do{
+        num1 = rand() % 9 + 1;
+        num2 = rand() % 9 + 1;
+    }while (num1 == num2 || steady[start_row + (rand() % 3)][start_col + (rand() % 3)] != 0);
+    int num1_row = -1, num1_col = -1, num2_row = -1, num2_col = -1;
+    for (int i = start_row; i < start_row + 3; i++){
+        for (int j = start_col; j < start_col + 3; j++){
+            if (child[i][j] == num1){
+                num1_row = i;
+                num1_col = j;
+            } else if (child[i][j] == num2){
+                num2_row = i;
+                num2_col = j;
+            }
+        }
+    }
+    int temp = child[num1_row][num1_col];
+    child[num1_row][num1_col] = child[num2_row][num2_col];
+    child[num2_row][num2_col] = temp;
+    memcpy(x[index], child, sizeof(int) * 81);
+}
+
+void swap(int x[9][9], int y[9][9]){
+    int temp[9][9];
+    memcpy(temp, x, sizeof(int) * 81);
+    memcpy(x, y, sizeof(int) * 81);
+    memcpy(y, temp, sizeof(int) * 81);
+}
+
+int partition(int x[][9][9], int fit_x[][9][9], int low, int high, int steady[9][9]){
+    int pivot = fitness(x[high], steady, fit_x[high]);
+    int i = low - 1;
+    for (int j = low; j < high; j++){
+        if (fitness(x[j], steady, fit_x[j]) <= pivot){
+            i++;
+            swap(x[i], x[j]);
+            swap(fit_x[i], fit_x[j]);
+        }
+    }
+    swap(x[i + 1], x[high]);
+    swap(fit_x[i + 1], fit_x[high]);
+    return i + 1;
+}
+
+void quicksort(int x[][9][9], int fit_x[][9][9], int low, int high, int steady[9][9]){
+    if (low < high) {
+        int pivot_index = partition(x, fit_x, low, high, steady);
+        quicksort(x, fit_x, low, pivot_index - 1, steady);
+        quicksort(x, fit_x, pivot_index + 1, high, steady);
+    }
+}
+
+
+int main(){
+	int population_size = 200;
+	int tournament_size = 8;
+	int selected_indices[population_size];
+	int best_indx, best_index_1, best_index_2;
+	int child[9][9];
+	int steady[9][9]; int fit_x[population_size][9][9]; int fit;
+	int count;
+	double selection_rate = 0.9;
+	double mutation_rate = 0.2;
+//	int x[population_size][9][9] = {
+//	{
+//	{0, 4, 0, 0, 1, 0, 9, 0, 8},
+//	{8, 0, 5, 0, 0, 0, 7, 0, 0},
+//	{0, 0, 0, 0, 0, 0, 0, 1, 0},
+//	{0, 2, 0, 0, 0, 5, 0, 0, 4},
+//	{0, 0, 1, 6, 0, 0, 0, 0, 0},
+//	{0, 3, 0, 0, 0, 8, 0, 0, 2},
+//	{0, 0, 0, 0, 0, 0, 0, 6, 0},
+//	{3, 0, 4, 0, 0, 0, 8, 0, 0},
+//	{0, 8, 0, 0, 9, 0, 4, 0, 3}
+//	}
+//	};
+	
+	
+	int x[population_size][9][9] = {
+	{
+    {0, 0, 0, 2, 6, 0, 7, 0, 1},
+    {6, 8, 0, 0, 7, 0, 0, 9, 0},
+    {1, 9, 0, 0, 0, 4, 5, 0, 0},
+    {8, 2, 0, 1, 0, 0, 0, 4, 0},
+    {0, 0, 4, 6, 0, 2, 9, 0, 0},
+    {0, 5, 0, 0, 0, 3, 0, 2, 8},
+    {0, 0, 9, 3, 0, 0, 0, 7, 4},
+    {0, 4, 0, 0, 5, 0, 0, 3, 6},
+    {7, 0, 3, 0, 1, 8, 0, 0, 0}
+	}
+    };
+	printf("Unsolved Sudoku: \n");
+	print_matrix(x[0]);
+	make_steady(x[0], steady);
+	initialize_population(x, population_size, steady);
+	for(int i = 0; i < tournament_size ; i++){
+		fit_x[i][9][9] = fitness(x[i] , steady, fit_x[i]);
+	}
+	fit = fitness(x[0], steady, fit_x[0]);
+	count=0;
+	int parent1, parent2;
+	parent1 = 0;
+	parent2 = 0;
+	while(fit != 0){
+		srand(time(NULL));
+		parent1 = tournament_selection(fit_x, tournament_size, population_size);
+		parent2 = 0;
+		while(parent1 == parent2){
+			parent2 = tournament_selection(fit_x, tournament_size, population_size);
+		}
+		crossover(x[parent1], x[parent2], child, steady);
+		quicksort(x, fit_x, 0, population_size - 1, steady);
+		for (int i = population_size -1  ; i >= population_size - (selection_rate * population_size); i--) {
+			for(int j = 0; j < mutation_rate * 100 ; j++){
+				mutate(child, i, steady, x);
+			} 
+		}
+		printf("%d generation \n",count);
+		printf("Smaller fitness: %d\n", fitness(x[0],steady ,fit_x[0]));
+		printf("Biggest fitness: %d\n \n", fitness(x[population_size -1 ],steady ,fit_x[population_size -1]));
+		fit = fitness(x[0], steady, fit_x[0]);
+		count++;
+	}
+	if (fit == 0) {
+    	printf("Sudoku solved successfully!!! :) :) :) \n");
+    	print_matrix(x[0]);
+	}
+
+	return 0;
+}
